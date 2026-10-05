@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MSDE KushalDrishti Command Center</title>
+    <!-- Leaflet CSS for Maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; height: 100vh; background-color: #f4f7f6; }
+        #sidebar { width: 350px; background: #fff; padding: 20px; box-shadow: 2px 0 5px rgba(0,0,0,0.1); overflow-y: auto; z-index: 1000; }
+        #map { flex-grow: 1; height: 100%; }
+        h2 { color: #1e3a8a; font-size: 22px; margin-top: 0; }
+        .notice-card { background: #fee2e2; border-left: 4px solid #ef4444; padding: 12px; margin-bottom: 15px; border-radius: 4px; }
+        .notice-title { font-weight: bold; color: #991b1b; margin-bottom: 5px; }
+        .notice-date { font-size: 12px; color: #7f1d1d; }
+        .compliant { color: #16a34a; font-weight: bold; }
+        .breach { color: #dc2626; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <h2>🛡️ KushalDrishti</h2>
+        <p style="font-size: 14px; color: #666;">National ITI Compliance & Ghost Attendance Monitor.</p>
+        <hr>
+        <h3>Automated Show Cause Notices</h3>
+        <div id="notices-container">
+            <p style="color: #888; font-size: 13px;">Fetching latest automated notices...</p>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Initialize Map centered on India
+        const map = L.map('map').setView([22.5937, 78.9629], 5);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+            attribution: 'MSDE SIH26245 | Team VeriGuard'
+        }).addTo(map);
+
+        // Fetch Live Map Data
+        async function fetchMapData() {
+            try {
+                // Since this runs on Nginx, we route to the FastAPI backend running on port 8000
+                const response = await fetch('http://localhost:8000/api/v1/map_data');
+                const data = await response.json();
+                
+                data.forEach(iti => {
+                    let markerColor = iti.status === "BREACH_GHOST_ATTENDANCE" ? "red" : "green";
+                    let circle = L.circleMarker([iti.lat, iti.lng], {
+                        color: markerColor, fillColor: markerColor, fillOpacity: 0.7, radius: 8
+                    }).addTo(map);
+
+                    circle.bindPopup(`
+                        <b>${iti.name} (${iti.centre_code})</b><br>
+                        State: ${iti.state}<br>
+                        Claimed Attendance: ${iti.claimed_attendance}<br>
+                        Camera Presence: ${iti.actual_presence.toFixed(1)}<br>
+                        Status: <span class="${iti.status === 'COMPLIANT' ? 'compliant' : 'breach'}">${iti.status.replace(/_/g, ' ')}</span>
+                    `);
+                });
+            } catch (err) {
+                console.error("Error fetching map data:", err);
+            }
+        }
+
+        // Fetch Live Notices
+        async function fetchNotices() {
+            try {
+                const response = await fetch('http://localhost:8000/api/v1/notices');
+                const notices = await response.json();
+                
+                const container = document.getElementById('notices-container');
+                container.innerHTML = '';
+                
+                if (notices.length === 0) {
+                    container.innerHTML = '<p style="color: #888; font-size: 13px;">No compliance breaches detected today.</p>';
+                    return;
+                }
+
+                notices.forEach(notice => {
+                    container.innerHTML += `
+                        <div class="notice-card">
+                            <div class="notice-title">🚨 ${notice.centre_code}</div>
+                            <div class="notice-date">Issued: ${new Date(notice.issue_date).toLocaleString()}</div>
+                            <div style="font-size: 13px; margin-top: 5px;">Violation: ${notice.violation.replace(/_/g, ' ')}</div>
+                            <div style="font-size: 12px; margin-top: 5px; color: #555;">PDF Work Order Drafted and cryptographically signed.</div>
+                        </div>
+                    `;
+                });
+            } catch (err) {
+                console.error("Error fetching notices:", err);
+            }
+        }
+
+        // Run fetches on load, and set a refresh interval every 10 seconds
+        fetchMapData();
+        fetchNotices();
+        setInterval(() => {
+            fetchMapData();
+            fetchNotices();
+        }, 10000);
+    </script>
+</body>
+</html>
