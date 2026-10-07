@@ -1,87 +1,61 @@
-import os
-import json
-import threading
-import paho.mqtt.client as mqtt
-from datetime import datetime
-import sys
+"""Turns a verified MQTT packet into database rows and alerts."""
+import logging, os, re, sys
+from datetime import datetime, timezone
+from psycopg.types.json import Jsonb
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "shared"))
+sys.path.insert(0, "/app/shared")
+import security
+from .db import pool
 
-# Ensure the shared security module can be imported
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../shared")))
-try:
-    from security import verify_signature
-except ImportError:
-    print("WARNING: Could not load security.py. Signature verification will fail.")
+log = logging.getLogger("ingest")
+EVIDENCE_DIR = os.environ.get("EVIDENCE_DIR", "/tmp/kd_evidence")
+os.makedirs(EVIDENCE_DIR, exist_ok=True)
+SIG_RE = re.compile(r"^[0-9a-f]{64}$")
+stats = {"accepted": 0, "duplicate": 0, "rejected": 0}
 
-from .db import SessionLocal, TelemetryLog, ITICentre
-from .notice import generate_show_cause_notice
+def ingest_packet(topic_centre: str, packet: dict):
+    """Returns an event dict for the dashboard, or None if the packet was not accepted."""
+    if packet.get("centre_code") != topic_centre or not security.verify(packet):
+        stats["rejected"] += 1
+        log.warning("rejected packet from topic %s", topic_centre)
+        return None
+    with pool.connection() as c:
+        last = c.execute("SELECT sig FROM packets WHERE centre_code=%s ORDER BY ts DESC, id DESC LIMIT 1",
+                         (topic_centre,)).fetchone()
+        chain_ok = last is None or last["sig"] == packet["prev_sig"] or packet["prev_sig"] == "GENESIS"
+        row = c.execute("""INSERT INTO packets (centre_code, ts, status, claimed, headcount, smoothed, camera_health,
+                           equipment, prev_sig, sig, chain_ok)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (sig) DO NOTHING RETURNING id""",
+                        (topic_centre, datetime.fromtimestamp(packet["ts"], timezone.utc), packet["status"],
+                         packet.get("claimed_roll"), packet.get("mean_headcount"), packet.get("smoothed_presence"),
+                         packet.get("camera_health"), Jsonb(packet.get("equipment", {})), packet["prev_sig"],
+                         packet["sig"], chain_ok)).fetchone()
+        if row is None:                       # QoS 1 can deliver twice; the signature makes it safe to ignore
+            stats["duplicate"] += 1
+            return None
+        stats["accepted"] += 1
+        kinds = []
+        if packet["status"] == "BREACH_GHOST_ATTENDANCE":
+            kinds.append("GHOST_ATTENDANCE")
+        if any(v == "ABSENT" for v in packet.get("equipment", {}).values()):
+            kinds.append("EQUIPMENT_MISSING")
+        new_alerts = []
+        for kind in kinds:                    # one open alert per centre and kind, so officers are not flooded
+            exists = c.execute("SELECT 1 FROM alerts WHERE centre_code=%s AND kind=%s AND status='OPEN'",
+                               (topic_centre, kind)).fetchone()
+            if not exists:
+                a = c.execute("INSERT INTO alerts (centre_code, packet_id, kind) VALUES (%s,%s,%s) RETURNING id",
+                              (topic_centre, row["id"], kind)).fetchone()
+                new_alerts.append({"alert_id": a["id"], "kind": kind})
+    return {"type": "packet", "centre": topic_centre, "status": packet["status"], "new_alerts": new_alerts}
 
-MQTT_BROKER = os.environ.get("MQTT_BROKER", "mosquitto")
-MQTT_PORT = 1883
-MQTT_TOPIC = "msde/telemetry/#"
+def save_evidence(sig: str, data: bytes):
+    if not SIG_RE.match(sig) or len(data) > 2_000_000:
+        return False
+    with open(os.path.join(EVIDENCE_DIR, f"{sig}.jpg"), "wb") as f:
+        f.write(data)
+    return True
 
-def on_connect(client, userdata, flags, rc):
-    print(f"[MQTT Listener] 🟢 Connected to broker with code {rc}. Subscribing to {MQTT_TOPIC}")
-    client.subscribe(MQTT_TOPIC, qos=1)
-
-def on_message(client, userdata, msg):
-    payload_str = msg.payload.decode('utf-8')
-    try:
-        packet = json.loads(payload_str)
-    except json.JSONDecodeError:
-        print("[MQTT Listener] ⚠️ Dropped invalid JSON payload.")
-        return
-
-    # 1. Cryptographic Verification
-    is_valid = verify_signature(packet)
-    if not is_valid:
-        print(f"[MQTT Listener] ❌ TAMPER ALERT: Invalid signature from {packet.get('centre')}")
-    
-    centre_code = packet.get("centre")
-    presence = packet.get("presence", 0.0)
-    status = packet.get("status", "UNKNOWN")
-    equipment = packet.get("equipment", {})
-
-    db = SessionLocal()
-    
-    # 2. Log Telemetry
-    log_entry = TelemetryLog(
-        centre_code=centre_code,
-        counted_presence=presence,
-        status=status,
-        equipment_status=equipment,
-        tamper_verified=is_valid
-    )
-    db.add(log_entry)
-    
-    # 3. Update ITI Master Record (Create if missing for demo purposes)
-    iti = db.query(ITICentre).filter(ITICentre.centre_code == centre_code).first()
-    if not iti:
-        # Mocking coordinates for demo (New Delhi area)
-        iti = ITICentre(
-            centre_code=centre_code, name=f"Training Centre {centre_code}", 
-            state="Delhi", latitude=28.6139, longitude=77.2090, 
-            claimed_attendance=packet.get("claimed", 0)
-        )
-        db.add(iti)
-    else:
-        iti.claimed_attendance = packet.get("claimed", 0)
-    
-    db.commit()
-    db.close()
-
-    # 4. Trigger Automated Actions
-    if status == "BREACH_GHOST_ATTENDANCE" and is_valid:
-        details = f"Portal Claim: {packet.get('claimed')} | Camera Count: {presence:.1f}"
-        generate_show_cause_notice(centre_code, details)
-
-def start_mqtt_listener():
-    """Runs the MQTT client loop in a background thread."""
-    client = mqtt.Client(client_id="msde_cloud_backend")
-    client.on_connect = on_connect
-    client.on_message = on_message
-    
-    try:
-        client.connect(MQTT_BROKER, MQTT_PORT, 60)
-        client.loop_start()
-    except Exception as e:
-        print(f"[MQTT Listener] Failed to connect to broker: {e}")
+def evidence_path(sig):
+    p = os.path.join(EVIDENCE_DIR, f"{sig}.jpg")
+    return p if sig and SIG_RE.match(sig) and os.path.exists(p) else None

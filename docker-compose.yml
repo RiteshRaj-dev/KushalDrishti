@@ -1,60 +1,27 @@
+# Start the cloud:        docker compose up --build
+# Add the demo fleet:     docker compose --profile demo up --build
 services:
-  # 1. PostGIS Database (Geospatial PostgreSQL for mapping ITI centres)
   db:
-    image: postgis/postgis:15-3.3
-    environment:
-      POSTGRES_USER: msde_admin
-      POSTGRES_PASSWORD: msde_password
-      POSTGRES_DB: kushaldrishti
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-
-  # 2. Eclipse Mosquitto (Low-Bandwidth IoT Message Broker)
+    image: postgis/postgis:16-3.4
+    environment: {POSTGRES_USER: kd, POSTGRES_PASSWORD: kd, POSTGRES_DB: kd}
+    volumes: [dbdata:/var/lib/postgresql/data]
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U kd"], interval: 3s, retries: 20}
   mosquitto:
-    image: eclipse-mosquitto:2.0
-    ports:
-      - "1883:1883"
-      - "9001:9001"
-    volumes:
-      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
-
-  # 3. MSDE Central Cloud Backend (FastAPI)
+    image: eclipse-mosquitto:2
+    volumes: ["./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro", "mqttdata:/mosquitto/data"]
+    ports: ["1883:1883"]
   backend:
-    build: ./backend
-    ports:
-      - "8000:8000"
-    depends_on:
-      - db
-      - mosquitto
+    build: {context: ., dockerfile: backend/Dockerfile}
     environment:
-      - DATABASE_URL=postgresql://msde_admin:msde_password@db:5432/kushaldrishti
-      - MQTT_BROKER=mosquitto
-    volumes:
-      - ./backend:/app
-      - ./shared:/app/shared
-      - shared_notices:/app/notices
-
-  # 4. ITI Edge Simulator (Runs multiple camera nodes testing the broker)
-  edge_fleet:
-    build: ./edge
-    depends_on:
-      - mosquitto
-    environment:
-      - MQTT_BROKER=mosquitto
-    volumes:
-      - ./edge:/app
-      - ./shared:/app/shared
-
-  # 5. MSDE React/HTML Map Dashboard
-  dashboard:
-    image: nginx:alpine
-    ports:
-      - "8501:80"
-    volumes:
-      - ./dashboard:/usr/share/nginx/html
-
-volumes:
-  pgdata:
-  shared_notices:
+      DATABASE_URL: postgresql://kd:kd@db:5432/kd
+      MQTT_HOST: mosquitto
+      KD_MASTER_SECRET: ${KD_MASTER_SECRET:-demo-master-change-me}
+    volumes: ["evidence:/evidence"]
+    depends_on: {db: {condition: service_healthy}, mosquitto: {condition: service_started}}
+    ports: ["8000:8000"]
+  fleet:
+    profiles: ["demo"]
+    build: {context: ., dockerfile: edge/Dockerfile}
+    environment: {MQTT_HOST: mosquitto, FLEET_INTERVAL: "3", KD_MASTER_SECRET: "${KD_MASTER_SECRET:-demo-master-change-me}"}
+    depends_on: [mosquitto, backend]
+volumes: {dbdata: {}, mqttdata: {}, evidence: {}}

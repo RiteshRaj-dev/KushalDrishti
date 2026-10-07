@@ -1,53 +1,37 @@
-import os
-from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, JSON, DateTime
-from sqlalchemy.orm import declarative_base, sessionmaker
-from datetime import datetime
+import json, os
+from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://msde_admin:msde_password@db:5432/kushaldrishti")
+DSN = os.environ.get("DATABASE_URL", "postgresql://kd:kd@localhost:5432/kd")
+pool = ConnectionPool(DSN, min_size=1, max_size=10, kwargs={"row_factory": dict_row}, open=False)
 
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+SCHEMA = """
+CREATE EXTENSION IF NOT EXISTS postgis;
+CREATE TABLE IF NOT EXISTS centres (
+  code TEXT PRIMARY KEY, name TEXT NOT NULL, state TEXT,
+  geom GEOGRAPHY(Point, 4326) NOT NULL);
+CREATE TABLE IF NOT EXISTS packets (
+  id BIGSERIAL PRIMARY KEY,
+  centre_code TEXT NOT NULL REFERENCES centres(code),
+  ts TIMESTAMPTZ NOT NULL, status TEXT NOT NULL, claimed INT, headcount REAL, smoothed REAL,
+  camera_health TEXT, equipment JSONB, prev_sig TEXT, sig TEXT UNIQUE NOT NULL,
+  chain_ok BOOLEAN NOT NULL, received_at TIMESTAMPTZ DEFAULT now());
+CREATE INDEX IF NOT EXISTS packets_centre_ts ON packets (centre_code, ts DESC);
+CREATE TABLE IF NOT EXISTS alerts (
+  id BIGSERIAL PRIMARY KEY, centre_code TEXT NOT NULL REFERENCES centres(code),
+  packet_id BIGINT REFERENCES packets(id), kind TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'OPEN',
+  reviewed_by TEXT, reviewed_at TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT now());
+CREATE TABLE IF NOT EXISTS notices (
+  id BIGSERIAL PRIMARY KEY, alert_id BIGINT REFERENCES alerts(id), sha256 TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now());
+"""
 
-# 1. Master Registry of ITI Centres
-class ITICentre(Base):
-    __tablename__ = "iti_centres"
-    
-    centre_code = Column(String, primary_key=True, index=True)
-    name = Column(String, nullable=False)
-    state = Column(String, nullable=False)
-    latitude = Column(Float, nullable=False)
-    longitude = Column(Float, nullable=False)
-    claimed_attendance = Column(Integer, default=0)
-
-# 2. Real-Time Edge Telemetry Stream
-class TelemetryLog(Base):
-    __tablename__ = "telemetry_logs"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    centre_code = Column(String, index=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
-    counted_presence = Column(Float)
-    status = Column(String)  # COMPLIANT, WARNING_SUSPECTED_GAP, BREACH_GHOST_ATTENDANCE
-    equipment_status = Column(JSON)
-    tamper_verified = Column(Boolean, default=True)
-
-# 3. PDF Show Cause Notices
-class ComplianceNotice(Base):
-    __tablename__ = "compliance_notices"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    centre_code = Column(String, index=True)
-    issue_date = Column(DateTime, default=datetime.utcnow)
-    violation_type = Column(String)
-    pdf_path = Column(String)
-
-# Automatically create tables on boot
-Base.metadata.create_all(bind=engine)
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+def init(centres_file: str):
+    pool.open()
+    with pool.connection() as c:
+        c.execute(SCHEMA)
+        for ct in json.load(open(centres_file)):
+            c.execute("""INSERT INTO centres (code, name, state, geom)
+                         VALUES (%s, %s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography)
+                         ON CONFLICT (code) DO NOTHING""",
+                      (ct["code"], ct["name"], ct["state"], ct["lon"], ct["lat"]))

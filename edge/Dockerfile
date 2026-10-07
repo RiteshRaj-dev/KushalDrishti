@@ -1,7 +1,8 @@
-FROM python:3.10-slim
+FROM python:3.12-slim
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
-# When the container boots, it simulates the national fleet of edge nodes
-CMD ["python", "run_fleet.py"]
+RUN pip install --no-cache-dir "paho-mqtt>=2.0" pillow numpy opencv-python-headless pandas
+COPY shared /app/shared
+COPY edge /app/edge
+COPY data /app/data
+ENV CENTRES_FILE=/app/data/centres.json
+CMD ["python", "edge/run_fleet.py"]

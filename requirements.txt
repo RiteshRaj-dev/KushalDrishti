@@ -1,0 +1,7 @@
+# Edge node with real models (needs PyTorch; first run downloads yolov8n.pt and yolov8s-worldv2.pt)
+ultralytics
+paho-mqtt>=2.0
+opencv-python-headless
+numpy
+pandas
+pillow
