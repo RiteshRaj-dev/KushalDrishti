@@ -7,6 +7,7 @@ backend/__init__.py backend/Dockerfile backend/requirements.txt backend/app/__in
 edge/Dockerfile edge/edge_node.py edge/run_fleet.py edge/kd_edge/__init__.py edge/kd_edge/config.py edge/kd_edge/privacy.py edge/kd_edge/health.py edge/kd_edge/rules.py edge/kd_edge/packets.py edge/kd_edge/transport.py edge/kd_edge/detectors.py edge/kd_edge/pipeline.py edge/kd_edge/run.py edge/kd_edge/evaluate.py edge/kd_edge/speed.py
 dashboard/index.html tools/fill_deck.py notebooks/KushalDrishti_Colab.ipynb
 tests/conftest.py tests/test_edge.py tests/test_cloud.py tests/test_deck_tool.py
+tools/annotate_video.py tools/build_demo.py tools/demo_template.html tests/test_demo.py docs/index.html docs/evidence_demo.jpg docs/sample_notice_draft.pdf docs/sample_notice_approved.pdf
 docs/PRIVACY_NOTE.md docs/EVALUATION.md docs/COMPETITORS.md docs/DEPLOYMENT.md deck/SIH26245.pptx""".split()
 missing = [f for f in REQUIRED if not os.path.isfile(os.path.join(ROOT, f))]
 for f in missing:

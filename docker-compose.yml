@@ -5,7 +5,7 @@ services:
     image: postgis/postgis:16-3.4
     environment: {POSTGRES_USER: kd, POSTGRES_PASSWORD: kd, POSTGRES_DB: kd}
     volumes: [dbdata:/var/lib/postgresql/data]
-    healthcheck: {test: ["CMD-SHELL", "pg_isready -U kd"], interval: 3s, retries: 20}
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U kd -d kd"], interval: 3s, retries: 30, start_period: 10s}   # TCP check: the set-up server on first start answers only on the socket
   mosquitto:
     image: eclipse-mosquitto:2
     volumes: ["./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro", "mqttdata:/mosquitto/data"]
@@ -17,10 +17,12 @@ services:
       MQTT_HOST: mosquitto
       KD_MASTER_SECRET: ${KD_MASTER_SECRET:-demo-master-change-me}
     volumes: ["evidence:/evidence"]
+    restart: unless-stopped
     depends_on: {db: {condition: service_healthy}, mosquitto: {condition: service_started}}
     ports: ["8000:8000"]
   fleet:
     profiles: ["demo"]
+    restart: unless-stopped
     build: {context: ., dockerfile: edge/Dockerfile}
     environment: {MQTT_HOST: mosquitto, FLEET_INTERVAL: "3", KD_MASTER_SECRET: "${KD_MASTER_SECRET:-demo-master-change-me}"}
     depends_on: [mosquitto, backend]

@@ -1,0 +1,45 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KushalDrishti | National Monitor</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{--navy:#0B2A4A;--ok:#2E9E5B;--watch:#F59E0B;--bad:#E4572E;--none:#7A869A}
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;display:flex;flex-direction:column;height:100vh;background:#F2F6FB}
+header{background:var(--navy);color:#fff;padding:10px 16px;display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+header h1{font-size:18px;margin:0 auto 0 0}.chip{padding:4px 10px;border-radius:14px;font-size:13px;font-weight:bold}
+main{flex:1;display:flex;min-height:0}#map{flex:1}aside{width:380px;overflow:auto;padding:10px;background:#fff;border-left:1px solid #D5DEEA}
+.dot{width:16px;height:16px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #0004}
+.OK{background:var(--ok)}.WATCH{background:var(--watch)}.NO_SIGNAL{background:var(--none)}
+.BREACH{background:var(--bad);animation:pulse 1.2s infinite}@keyframes pulse{0%{box-shadow:0 0 0 0 #E4572Eaa}100%{box-shadow:0 0 0 18px #E4572E00}}
+.card{border:1px solid #D5DEEA;border-left:5px solid var(--bad);border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:13px;background:#FCE7E1}
+.card b{color:var(--navy)}button,.card a{font-size:12px;margin:6px 6px 0 0;padding:4px 8px;border-radius:5px;border:1px solid var(--navy);background:#fff;cursor:pointer;color:var(--navy);text-decoration:none;display:inline-block}
+#err{display:none;background:#E4572E;color:#fff;padding:6px 16px;font-size:13px}h2{font-size:15px;color:var(--navy);margin:4px 0 8px}
+</style></head><body>
+<header><h1>KushalDrishti | National Training Centre Monitor</h1><span class="chip" style="background:var(--ok)" id="s-ok"></span>
+<span class="chip" style="background:var(--watch)" id="s-watch"></span><span class="chip" style="background:var(--bad)" id="s-bad"></span><span class="chip" style="background:var(--none)" id="s-none"></span></header><div id="err">Cannot reach the server. Retrying...</div>
+<main><div id="map"></div><aside><h2>Open alerts (officer review needed)</h2><div id="alerts"></div></aside></main>
+<script>
+const map=L.map('map').setView([22.5,79],5);L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap'}).addTo(map);
+let layer=L.layerGroup().addTo(map);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function loadMap(){const g=await (await fetch('/api/centres')).json();layer.clearLayers();
+ g.features.forEach(f=>{const p=f.properties,[lon,lat]=f.geometry.coordinates;
+  L.marker([lat,lon],{icon:L.divIcon({className:'',html:`<div class="dot ${p.colour_state}"></div>`,iconSize:[16,16]})}).addTo(layer)
+   .bindPopup(`<b>${esc(p.name)}</b><br>${esc(p.state)}<br>Status: ${esc(p.colour_state)}<br>Claimed ${esc(p.claimed??'-')} | Counted ${p.headcount==null?'-':Number(p.headcount).toFixed(1)}<br>Camera: ${esc(p.camera_health??'-')}`);});
+ const s=await (await fetch('/api/summary')).json();
+ ['ok:OK','watch:WATCH','bad:BREACH','none:NO_SIGNAL'].forEach(x=>{const[k,v]=x.split(':');document.getElementById('s-'+k).textContent=`${v.replace('_',' ')} ${s[v]}`});}
+const hdr=()=>{const k=sessionStorage.getItem('kdkey');return k?{'X-API-Key':k}:{}};
+async function authed(url,opt={}){const go=()=>fetch(url,{...opt,headers:{...(opt.headers||{}),...hdr()}});let r=await go();if(r.status===401){const k=prompt('Officer access key:');if(!k)return r;sessionStorage.setItem('kdkey',k);r=await go();}return r;}
+async function openNotice(id){const r=await authed(`/api/alerts/${id}/notice.pdf`);if(!r.ok)return alert('Could not open the notice');window.open(URL.createObjectURL(await r.blob()),'_blank');}
+async function loadAlerts(){const a=await (await fetch('/api/alerts')).json();const el=document.getElementById('alerts');
+ el.innerHTML=a.length?'':'<p>No open alerts.</p>';
+ a.forEach(x=>{const d=document.createElement('div');d.className='card';
+  d.innerHTML=`<b>${esc(x.name)}</b> (${esc(x.code)})<br>${esc(x.kind.replace('_',' '))}<br>${esc(new Date(x.created_at).toLocaleString())}<br>
+  <button data-n="1">Draft notice</button><button data-d="APPROVE">Approve</button><button data-d="DISMISS">Dismiss</button>`;
+  d.querySelector('[data-n]').onclick=()=>openNotice(x.id);
+  d.querySelectorAll('[data-d]').forEach(b=>b.onclick=async()=>{const o=prompt('Your officer name or ID:');if(!o)return;
+   const r=await authed(`/api/alerts/${x.id}/review`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({decision:b.dataset.d,officer:o})});
+   if(!r.ok)alert('Could not save the review');refresh();});el.appendChild(d);});}
+const refresh=()=>{Promise.all([loadMap(),loadAlerts()]).then(()=>err.style.display='none').catch(()=>err.style.display='block')};const err=document.getElementById('err');refresh();setInterval(refresh,15000);
+(function connect(){const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
+ ws.onmessage=refresh;ws.onclose=()=>setTimeout(connect,3000);ws.onopen=()=>setInterval(()=>ws.readyState==1&&ws.send('ping'),20000);})();
+</script></body></html>

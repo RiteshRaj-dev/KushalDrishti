@@ -32,6 +32,10 @@ Colab version: `notebooks/KushalDrishti_Colab.ipynb` (same packet format, accept
 | PostGIS map, radius query, silent-centre detection | `backend/app/main.py` | PostgreSQL tests |
 | Officer approval, API key, draft notice PDF with SHA-256 | `main.py`, `notice.py` | PostgreSQL tests |
 
+## Demo link for judges (no server needed)
+`docs/index.html` is a static map with SIMULATED data (51 centres, one red breach, a side panel, a sample draft notice PDF). Publish it free: GitHub repo > Settings > Pages > Branch `main`, folder `/docs` > Save. Your link: `https://<your-username>.github.io/KushalDrishti/`. Rebuild it with `python tools/build_demo.py`.
+Processed video: `python tools/annotate_video.py --video clip.mp4 --out processed.mp4 --claimed 18 --demo`.
+
 ## Measured results
 Not measured yet. The accuracy table, headcount error and CPU load must come from your own footage: see `docs/EVALUATION.md`. `tools/fill_deck.py` writes them into the deck.
 

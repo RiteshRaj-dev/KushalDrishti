@@ -1,0 +1,64 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KushalDrishti | National Monitor (demo)</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{--navy:#0B2A4A;--teal:#00A896;--ok:#2E9E5B;--watch:#F59E0B;--bad:#E4572E;--none:#7A869A}
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;display:flex;flex-direction:column;height:100vh;background:#F2F6FB;color:#1B2A41}
+header{background:var(--navy);color:#fff;padding:10px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}header h1{font-size:18px;margin:0 auto 0 0}
+.chip{padding:4px 10px;border-radius:14px;font-size:13px;font-weight:bold;color:#fff}
+#demo{background:#FEF1DC;color:#7A4B00;padding:6px 16px;font-size:13px;border-bottom:1px solid #F5D9A8}#demo a{color:#7A4B00;font-weight:bold}
+main{flex:1;display:flex;min-height:0;position:relative}#map{flex:1}
+aside{width:390px;overflow:auto;padding:14px;background:#fff;border-left:1px solid #D5DEEA}
+.dot{width:16px;height:16px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #0004}
+.OK{background:var(--ok)}.WATCH{background:var(--watch)}.NO_SIGNAL{background:var(--none)}.BREACH{background:var(--bad);animation:pulse 1.2s infinite;width:20px;height:20px}
+@keyframes pulse{0%{box-shadow:0 0 0 0 #E4572Eaa}100%{box-shadow:0 0 0 22px #E4572E00}}
+h2{font-size:17px;margin:0 0 4px;color:var(--navy)}.sub{font-size:12px;color:#5B6B82;margin-bottom:10px}
+.stats{display:flex;gap:8px;margin:10px 0}.stat{flex:1;text-align:center;border-radius:8px;padding:8px 4px;background:#F2F6FB}.stat b{display:block;font-size:22px}.stat span{font-size:11px;color:#5B6B82}
+.bad{color:var(--bad)}.tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:bold;color:#fff;margin:2px 4px 2px 0}
+button{font-size:13px;margin:8px 8px 0 0;padding:7px 12px;border-radius:6px;border:1px solid var(--navy);background:#fff;cursor:pointer;color:var(--navy);font-weight:bold}
+button.primary{background:var(--navy);color:#fff}a.btn{display:inline-block;font-size:13px;margin:8px 8px 0 0;padding:7px 12px;border-radius:6px;border:1px solid var(--teal);color:#007a6e;text-decoration:none;font-weight:bold}
+img{width:100%;border-radius:8px;border:1px solid #D5DEEA}#legend{position:absolute;left:12px;bottom:12px;z-index:900;background:#fff;border-radius:8px;padding:8px 10px;font-size:12px;box-shadow:0 1px 6px #0003}
+#legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin:0 4px 0 8px}
+@media(max-width:800px){main{flex-direction:column}aside{width:100%;height:46%;border-left:0;border-top:1px solid #D5DEEA}}
+</style></head><body>
+<header><h1>KushalDrishti | National Training Centre Monitor</h1><span class="chip" style="background:var(--ok)" id="c-ok"></span><span class="chip" style="background:var(--watch)" id="c-watch"></span><span class="chip" style="background:var(--bad)" id="c-bad"></span><span class="chip" style="background:var(--none)" id="c-none"></span></header>
+<div id="demo"><b>DEMO WITH SIMULATED DATA.</b> No real centre, trainee or camera is shown. Click the pulsing red dot. The working system (edge software, cloud, tests) is in the <a href="__REPO__" target="_blank" rel="noopener">GitHub repository</a>.</div>
+<main><div id="map"></div><div id="legend"><i style="background:var(--ok);margin-left:0"></i>Compliant<i style="background:var(--watch)"></i>Watch<i style="background:var(--bad)"></i>Breach<i style="background:var(--none)"></i>No signal</div>
+<aside id="side"></aside></main>
+<script>
+const DATA=__DATA__, STORY=__STORY__, COL={OK:'#2E9E5B',WATCH:'#F59E0B',BREACH:'#E4572E',NO_SIGNAL:'#7A869A'};
+const LABEL={OK:'Compliant',WATCH:'Watch',BREACH:'Breach',NO_SIGNAL:'No signal'};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let review=null;const side=document.getElementById('side');
+const map=L.map('map').setView([22.5,79],5);L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap'}).addTo(map);
+function count(){const n=s=>DATA.filter(c=>c.status===s).length;[['ok','OK'],['watch','WATCH'],['bad','BREACH'],['none','NO_SIGNAL']].forEach(([k,s])=>{document.getElementById('c-'+k).textContent=LABEL[s]+' '+n(s)})}
+function chart(){const W=340,H=130,p=24,xs=STORY.minutes,mx=xs[xs.length-1],y=v=>H-p-(v/32)*(H-2*p),x=m=>p+(m/mx)*(W-2*p);
+ const line=(arr,c,w,d)=>`<polyline fill="none" stroke="${c}" stroke-width="${w}" ${d?'stroke-dasharray="5 4"':''} points="${arr.map((v,i)=>x(xs[i])+','+y(v)).join(' ')}"/>`;
+ return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Claimed versus counted trainees over time"><rect width="${W}" height="${H}" fill="#F2F6FB" rx="8"/>
+ <rect x="${x(STORY.first_gap_min)}" y="${p-8}" width="${x(mx)-x(STORY.first_gap_min)}" height="${H-2*p+8}" fill="#E4572E" opacity=".10"/>
+ ${line(STORY.counted.map(()=>STORY.claimed),'#0070C0',2,true)}${line(STORY.counted,'#00A896',2.5)}${line(STORY.smoothed,'#0B2A4A',2)}
+ <line x1="${x(STORY.breach_min)}" x2="${x(STORY.breach_min)}" y1="${p-8}" y2="${H-p}" stroke="#E4572E" stroke-width="2"/><text x="${x(STORY.breach_min)+4}" y="${p+2}" font-size="10" fill="#E4572E" font-weight="bold">Breach</text>
+ <text x="${p}" y="${H-6}" font-size="10" fill="#5B6B82">0 min</text><text x="${W-p-30}" y="${H-6}" font-size="10" fill="#5B6B82">${mx} min</text>
+ <text x="6" y="${y(30)+3}" font-size="9" fill="#0070C0">30</text></svg>
+ <div class="sub"><span style="color:#0070C0">- - claimed</span> &nbsp; <span style="color:#00A896">&#9473; counted</span> &nbsp; <span style="color:#0B2A4A">&#9473; 15-minute average</span></div>`}
+function equip(){const E=[['lathe','PRESENT','#2E9E5B'],['workbench','PRESENT','#2E9E5B'],['fire extinguisher','PRESENT','#2E9E5B'],['welding machine','UNVERIFIED','#7A869A']];
+ return E.map(e=>`<span class="tag" style="background:${e[2]}">${esc(e[0])}: ${e[1].toLowerCase()}</span>`).join('')}
+function openRed(c){const gap=Math.round((c.claimed-c.counted)/c.claimed*100);
+ const st=review==='APPROVED'?'<span class="tag" style="background:#2E9E5B">Approved by Officer-17 (demo)</span>':review==='DISMISSED'?'<span class="tag" style="background:#7A869A">Dismissed (demo)</span>':'<span class="tag" style="background:#E4572E">Waiting for officer review</span>';
+ side.innerHTML=`<h2>${esc(c.name)}</h2><div class="sub">${esc(c.state)} | ${esc(c.code)} | GHOST ATTENDANCE ALERT</div>${st}
+ <div class="stats"><div class="stat"><b>${c.claimed}</b><span>claimed on portal</span></div><div class="stat"><b class="bad">${c.counted}</b><span>counted in room</span></div><div class="stat"><b class="bad">${gap}%</b><span>gap</span></div></div>
+ <div class="sub"><b>Gap held ${STORY.gap_held_min} minutes</b> (rule: over 20% for 30 minutes). Short breaks do not trigger it.</div>${chart()}
+ <div class="sub" style="margin-top:8px"><b>Equipment</b> (seen by camera)</div>${equip()}
+ <div class="sub" style="margin-top:10px"><b>Blurred evidence photo</b> (made only on a confirmed breach)</div><img src="evidence_demo.jpg" alt="Simulated blurred evidence photo">
+ <div class="sub" style="margin-top:8px">Camera health: OK | Packet signature chain: verified (simulated)</div>
+ <div id="act">${review?'':'<button class="primary" id="ap">Approve</button><button id="di">Dismiss</button>'}
+ <a class="btn" target="_blank" rel="noopener" href="${review==='APPROVED'?'sample_notice_approved.pdf':'sample_notice_draft.pdf'}">${review==='APPROVED'?'Open approved notice (PDF)':'Open draft notice (PDF)'}</a></div>
+ <div class="sub" style="margin-top:10px">No notice is issued without an officer's approval. This is a draft for review.</div>`;
+ const a=document.getElementById('ap'),d=document.getElementById('di');if(a)a.onclick=()=>{review='APPROVED';openRed(c)};if(d)d.onclick=()=>{review='DISMISSED';openRed(c)}}
+function openCard(c){if(c.status==='BREACH')return openRed(c);
+ const note={OK:'No action needed.',WATCH:'A gap was seen but it has not lasted 30 minutes. The system keeps watching.',NO_SIGNAL:'No packet received for over 10 minutes. An officer may check the line or the camera.'}[c.status];
+ side.innerHTML=`<h2>${esc(c.name)}</h2><div class="sub">${esc(c.state)} | ${esc(c.code)}</div><span class="tag" style="background:${COL[c.status]}">${LABEL[c.status]}</span>
+ <div class="stats"><div class="stat"><b>${c.claimed}</b><span>claimed on portal</span></div><div class="stat"><b>${c.counted==null?'n/a':c.counted}</b><span>counted in room</span></div></div><div class="sub">${note}</div>`}
+DATA.forEach(c=>{const m=L.marker([c.lat,c.lon],{icon:L.divIcon({className:'',html:'<div class="dot '+c.status+'"></div>',iconSize:[20,20]})}).addTo(map);m.on('click',()=>openCard(c))});
+count();const red=DATA.find(c=>c.status==='BREACH');side.innerHTML='<h2>Select a centre</h2><div class="sub">Every dot is one training centre. Click the pulsing red dot to see the alert.</div>';
+</script></body></html>
