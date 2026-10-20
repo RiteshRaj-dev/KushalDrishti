@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+paho-mqtt>=2.0
+psycopg[binary]
+psycopg_pool
+reportlab
+pillow

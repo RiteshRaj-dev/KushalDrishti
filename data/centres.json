@@ -1,0 +1,14 @@
+[
+ {"code":"ITI-DL-001","name":"Demo ITI Delhi North","state":"Delhi","lat":28.7041,"lon":77.1025},
+ {"code":"ITI-DL-002","name":"Demo ITI Delhi South","state":"Delhi","lat":28.5355,"lon":77.2100},
+ {"code":"ITI-UP-001","name":"Demo ITI Lucknow","state":"Uttar Pradesh","lat":26.8467,"lon":80.9462},
+ {"code":"ITI-RJ-001","name":"Demo ITI Jaipur","state":"Rajasthan","lat":26.9124,"lon":75.7873},
+ {"code":"ITI-MH-001","name":"Demo ITI Pune","state":"Maharashtra","lat":18.5204,"lon":73.8567},
+ {"code":"ITI-MH-002","name":"Demo ITI Nagpur","state":"Maharashtra","lat":21.1458,"lon":79.0882},
+ {"code":"ITI-GJ-001","name":"Demo ITI Ahmedabad","state":"Gujarat","lat":23.0225,"lon":72.5714},
+ {"code":"ITI-KA-001","name":"Demo ITI Mysuru","state":"Karnataka","lat":12.2958,"lon":76.6394},
+ {"code":"ITI-TN-001","name":"Demo ITI Madurai","state":"Tamil Nadu","lat":9.9252,"lon":78.1198},
+ {"code":"ITI-WB-001","name":"Demo ITI Kolkata","state":"West Bengal","lat":22.5726,"lon":88.3639},
+ {"code":"ITI-BR-001","name":"Demo ITI Patna","state":"Bihar","lat":25.5941,"lon":85.1376},
+ {"code":"ITI-OD-001","name":"Demo ITI Bhubaneswar","state":"Odisha","lat":20.2961,"lon":85.8245}
+]

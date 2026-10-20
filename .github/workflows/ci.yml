@@ -1,0 +1,19 @@
+name: tests
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgis/postgis:16-3.4
+        env: {POSTGRES_USER: kd, POSTGRES_PASSWORD: kd, POSTGRES_DB: kd}
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U kd" --health-interval 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements-dev.txt
+      - run: python check_files.py
+      - run: python -m pytest -q tests
+        env: {DATABASE_URL: "postgresql://kd:kd@localhost:5432/kd"}

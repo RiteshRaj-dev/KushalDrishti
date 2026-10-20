@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+data/*.db
+outputs/
+shots/
+eval_frames/        # raw, unblurred frames: never publish
+*.mp4
+*.pt
+*.pptx
+*.docx
+.env

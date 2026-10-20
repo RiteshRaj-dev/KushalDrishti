@@ -1,0 +1,13 @@
+pytest
+httpx
+python-pptx
+fastapi
+uvicorn[standard]
+paho-mqtt>=2.0
+psycopg[binary]
+psycopg_pool
+reportlab
+pillow
+numpy
+pandas
+opencv-python-headless

@@ -1,0 +1,29 @@
+# Start the cloud:        docker compose up --build
+# Add the demo fleet:     docker compose --profile demo up --build
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment: {POSTGRES_USER: kd, POSTGRES_PASSWORD: kd, POSTGRES_DB: kd}
+    volumes: [dbdata:/var/lib/postgresql/data]
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U kd -d kd"], interval: 3s, retries: 30, start_period: 10s}   # TCP check: the set-up server on first start answers only on the socket
+  mosquitto:
+    image: eclipse-mosquitto:2
+    volumes: ["./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro", "mqttdata:/mosquitto/data"]
+    ports: ["1883:1883"]
+  backend:
+    build: {context: ., dockerfile: backend/Dockerfile}
+    environment:
+      DATABASE_URL: postgresql://kd:kd@db:5432/kd
+      MQTT_HOST: mosquitto
+      KD_MASTER_SECRET: ${KD_MASTER_SECRET:-demo-master-change-me}
+    volumes: ["evidence:/evidence"]
+    restart: unless-stopped
+    depends_on: {db: {condition: service_healthy}, mosquitto: {condition: service_started}}
+    ports: ["8000:8000"]
+  fleet:
+    profiles: ["demo"]
+    restart: unless-stopped
+    build: {context: ., dockerfile: edge/Dockerfile}
+    environment: {MQTT_HOST: mosquitto, FLEET_INTERVAL: "3", KD_MASTER_SECRET: "${KD_MASTER_SECRET:-demo-master-change-me}"}
+    depends_on: [mosquitto, backend]
+volumes: {dbdata: {}, mqttdata: {}, evidence: {}}
